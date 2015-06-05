@@ -22,7 +22,7 @@ include Chef::DSL::IncludeRecipe
 
 action :before_compile do
 
-  include_recipe 'nodejs::install_from_source'
+  include_recipe 'nodejs::nodejs_from_package'
 
   if new_resource.npm
     include_recipe 'nodejs::npm'
