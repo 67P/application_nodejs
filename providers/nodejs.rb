@@ -24,6 +24,8 @@ action :before_compile do
 
   include_recipe 'nodejs::nodejs_from_package'
 
+  r = new_resource
+
   if new_resource.npm
     include_recipe 'nodejs::npm'
   end
@@ -31,8 +33,12 @@ action :before_compile do
   unless new_resource.restart_command
     new_resource.restart_command do
 
-      service "#{new_resource.application.name}_nodejs" do
-        provider Chef::Provider::Service::Upstart
+      service "#{r.application.name}_nodejs" do
+        if platform?('ubuntu') && node[:platform_version].to_f >= 14.04
+          provider Chef::Provider::Service::Systemd
+        else
+          provider Chef::Provider::Service::Upstart
+        end
         supports :restart => true, :start => true, :stop => true
         action [:enable, :restart]
       end
@@ -41,7 +47,7 @@ action :before_compile do
   end
 
   new_resource.environment.update({
-    'NODE_ENV' => new_resource.environment_name
+    'NODE_ENV' => r.environment_name
   })
 
 end
@@ -69,24 +75,57 @@ action :before_symlink do
 end
 
 action :before_restart do
+  r = new_resource
 
-  template "#{new_resource.application.name}.upstart.conf" do
-    path "/etc/init/#{new_resource.application.name}_nodejs.conf"
-    source new_resource.template ? new_resource.template : 'nodejs.upstart.conf.erb'
-    cookbook new_resource.template ? new_resource.cookbook_name.to_s : 'application_nodejs'
-    owner 'root'
-    group 'root'
-    mode '0644'
-    variables(
-      :user => new_resource.owner,
-      :group => new_resource.group,
-      :node_dir => node['nodejs']['dir'],
-      :app_dir => new_resource.release_path,
-      :entry => new_resource.entry_point,
-      :environment => new_resource.environment
-    )
+  service "#{r.application.name}_nodejs" do
+    if platform?('ubuntu') && node[:platform_version].to_f >= 14.04
+      provider Chef::Provider::Service::Systemd
+    else
+      provider Chef::Provider::Service::Upstart
+    end
   end
 
+  if platform?('ubuntu') && node[:platform_version].to_f >= 14.04
+    execute "systemctl daemon-reload" do
+      command "systemctl daemon-reload"
+      action :nothing
+    end
+
+    template "#{r.application.name}_nodejs.systemd.service.erb" do
+      path "/lib/systemd/system/#{r.application.name}_nodejs.service"
+      source r.template ? r.template : 'nodejs.systemd.service.erb'
+      cookbook r.template ? r.cookbook_name.to_s : 'application_nodejs'
+      owner 'root'
+      group 'root'
+      mode '0644'
+      variables(
+        :user => r.owner,
+        :group => r.group,
+        :app_dir => r.release_path,
+        :entry => r.entry_point,
+        :environment => r.environment
+      )
+      notifies :run, "execute[systemctl daemon-reload]", :delayed
+      notifies :restart, "service[#{r.cookbook_name}_nodejs]", :delayed
+    end
+  else
+    template "#{new_resource.application.name}.upstart.conf" do
+      path "/etc/init/#{r.application.name}_nodejs.conf"
+      source r.template ? r.template : 'nodejs.upstart.conf.erb'
+      cookbook r.template ? r.cookbook_name.to_s : 'application_nodejs'
+      owner 'root'
+      group 'root'
+      mode '0644'
+      variables(
+        :user => r.owner,
+        :group => r.group,
+        :app_dir => r.release_path,
+        :entry => r.entry_point,
+        :environment => r.environment
+      )
+      notifies :restart, "service[#{r.cookbook_name}_nodejs]", :delayed
+    end
+  end
 end
 
 action :after_restart do
