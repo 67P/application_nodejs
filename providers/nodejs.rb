@@ -56,25 +56,6 @@ action :before_deploy do
 
   new_resource.environment['NODE_ENV'] = new_resource.environment_name
 
-end
-
-action :before_migrate do
-
-  if new_resource.npm
-    execute 'npm install' do
-      cwd new_resource.release_path
-      user new_resource.owner
-      group new_resource.group
-      environment new_resource.environment.merge({ 'HOME' => new_resource.shared_path })
-    end
-  end
-
-end
-
-action :before_symlink do
-end
-
-action :before_restart do
   r = new_resource
 
   service "#{r.application.name}_nodejs" do
@@ -106,7 +87,7 @@ action :before_restart do
         :environment => r.environment
       )
       notifies :run, "execute[systemctl daemon-reload]", :delayed
-      notifies :restart, "service[#{r.cookbook_name}_nodejs]", :delayed
+      notifies :restart, "service[#{r.application.name}_nodejs]", :delayed
     end
   else
     template "#{new_resource.application.name}.upstart.conf" do
@@ -123,9 +104,28 @@ action :before_restart do
         :entry => r.entry_point,
         :environment => r.environment
       )
-      notifies :restart, "service[#{r.cookbook_name}_nodejs]", :delayed
+      notifies :restart, "service[#{r.application.name}_nodejs]", :delayed
     end
   end
+end
+
+action :before_migrate do
+
+  if new_resource.npm
+    execute 'npm install' do
+      cwd new_resource.release_path
+      user new_resource.owner
+      group new_resource.group
+      environment new_resource.environment.merge({ 'HOME' => new_resource.shared_path })
+    end
+  end
+
+end
+
+action :before_symlink do
+end
+
+action :before_restart do
 end
 
 action :after_restart do
