@@ -22,8 +22,6 @@ include Chef::DSL::IncludeRecipe
 
 action :before_compile do
 
-  include_recipe 'nodejs::nodejs_from_package'
-
   r = new_resource
 
   if new_resource.npm
